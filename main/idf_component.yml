@@ -1,0 +1,11 @@
+version: "0.1.0"
+description: "ESP32-S31-Korvo GIF display and RGB LED control demo"
+
+dependencies:
+  idf:
+    version: ">=6.1.0"
+  # 官方 ESP32-S31-Korvo BSP（本仓库 common_components 中的开发版）
+  # 注意：组件注册表中不存在 espressif/esp32_s31_korvo，
+  # 必须使用本仓库的本地路径依赖。
+  esp32_s31_korvo:
+    path: "../../common_components/esp32_s31_korvo"
