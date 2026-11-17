@@ -1,20 +1,41 @@
-# ESP32-S31-Korvo GIF 动图 + RGB 灯控制示例
+# ESP32-S31-Korvo GIF 动图轮播 + RGB 滑条调色示例
 
 基于官方 [ESP32-S31-Korvo BSP](../../common_components/esp32_s31_korvo)（本仓库
-`common_components`）实现的 LVGL 动图显示与板载 WS2812 RGB 灯控制示例。
+`common_components`）实现的 LVGL 动图轮播与板载 WS2812 RGB 灯滑条调色示例。
 
 ## 功能
 
 | 区域 | 内容 |
 |------|------|
-| 左侧 (0,0)-(399,479) | 循环播放的 GIF 动图（自动无限循环） |
-| 右侧 (400,0)-(799,479) | 三个直径 120 像素的圆形按钮，垂直等距排列 |
-| 顶部红色按钮 | 按下点亮板载 RGB 灯为红色，松开后保持 |
-| 中间绿色按钮 | 按下点亮板载 RGB 灯为绿色，松开后保持 |
-| 底部蓝色按钮 | 按下点亮板载 RGB 灯为蓝色，松开后保持 |
-| 初始状态 | GIF 自动播放，RGB 灯熄灭 |
+| 左侧 (0,0)-(399,429) | 4 个 GIF 动图循环播放（自动无限循环，可切换） |
+| 左侧底部 ◀ ▶ | 触摸箭头按钮，切换上一个/下一个动图 |
+| 板载按键 SET | 单击切换到下一个动图 |
+| 板载按键 MODE | 单击切换到上一个动图 |
+| 右侧预览圆 | 实时显示当前 LED 颜色（初始黑色=灯灭） |
+| 右侧 R/G/B 滑条 | 左右拖动三个颜色滑条，实时自定义板载 RGB 灯颜色 |
 
-按钮按下时有触摸反馈：缩放至 90% 并变暗（150ms 平滑过渡）。
+## GIF 动图文件
+
+4 个动图存放于项目根目录 `GIF/` 文件夹，编译时嵌入固件 Flash：
+
+| 文件 | 尺寸 | 画布 |
+|------|------|------|
+| cat.gif | 442KB | 179×229 |
+| ganyu.gif | 577KB | 160×214 |
+| qingwa.gif | 27KB | 93×93 |
+| sanyu.gif | 334KB | 320×293 |
+
+动图会按画布比例自动缩放居中显示在左侧区域（小图最多放大 4 倍）。
+
+### 添加/替换动图
+
+1. 将新动图放入 `GIF/` 文件夹；
+2. 在 `main/CMakeLists.txt` 增加一行：
+   `target_add_binary_data(${COMPONENT_LIB} "../GIF/你的文件.gif" BINARY RENAME_TO xxx_gif)`
+3. 在 `app_main.c` 中：
+   - `GIF_ASSET_DECLARE(xxx_gif)` 声明链接符号；
+   - `gif_assets_init()` 中调用 `gif_asset_init()` 注册；
+   - 修改 `GIF_COUNT` 宏。
 
 ## 架构说明（与需求映射）
 
@@ -28,15 +49,13 @@
 - **GIF 动图**：LVGL 官方 `lv_gif` 部件（LVGL v9.6）。GIF 数据通过
   `target_add_binary_data` 以二进制数组嵌入固件 Flash（.rodata 段），
   解码后的帧缓冲由 LVGL 分配器路由到 PSRAM（`CONFIG_LV_USE_CLIB_MALLOC=y`）。
-- **RGB 灯**：板载 WS2812，官方 BSP 接口 `bsp_led_init()` / `bsp_led_clear()` /
-  `bsp_led_set_rgb()`，亮度 80%（分量值 204）。先熄灭再点亮对应颜色。
-
-## 替换自己的 GIF
-
-1. 将你的 GIF 文件覆盖 `main/sample_anim.gif`（文件名保持不变，无需改代码）。
-2. 建议尺寸接近 400×480。若动图尺寸匹配，删除 `app_main.c` 中
-   `create_gif_area()` 里的 `lv_image_set_scale()` 调用。
-3. 动图过大会占用 Flash，注意 `partitions.csv` 中 factory 分区为 6MB。
+  切换动图 = 调用 `lv_gif_set_src()` 换源，自动关闭旧源。
+- **按键**：官方 BSP `bsp_iot_button_create()` + iot_button 事件回调
+  （`BUTTON_SINGLE_CLICK`）。回调运行在按键任务上下文，操作 LVGL 前通过
+  `bsp_display_lock()` 加锁，无轮询。
+- **RGB 滑条**：LVGL `lv_slider`，`LV_EVENT_VALUE_CHANGED` 事件实时驱动
+  `bsp_led_set_rgb()`（先 `bsp_led_clear()` 再点亮）。滑条范围 0~255，
+  若想限流亮度可将 `app_main.c` 中 `UI_COLOR_MAX` 改为 204（80%）。
 
 ## 编译与烧录
 
@@ -74,8 +93,8 @@ idf.py -p COM6 flash monitor
 3. **组件下载失败（网络）**
    组件注册表或 file 服务器不可达时，可配置镜像：
    `$env:IDF_COMPONENT_MIRROR_URL = "https://components.espressif.com"`，
-   或重试下载。本示例依赖 `esp32_s31_korvo` 本地路径组件 + 注册表组件
-   （esp_lvgl_adapter、lvgl 等）。
+   或重试下载（已下载组件有缓存）。本示例依赖 `esp32_s31_korvo` 本地路径
+   组件 + 注册表组件（esp_lvgl_adapter、lvgl 等）。
 
 4. **烧录提示 Flash 容量不匹配**
    本配置按 8MB Flash 设置（`CONFIG_ESPTOOLPY_FLASHSIZE_8MB`）。若实际
@@ -85,6 +104,11 @@ idf.py -p COM6 flash monitor
    触摸由 BSP 自动初始化（GT1151，兼容 GT911 协议）。检查 I2C 线序与
    排线是否插紧，重新上电。
 
-6. **动图不播放**
-   确认 `main/sample_anim.gif` 为合法 GIF89a 文件。示例动图解码到 PSRAM，
-   确认 `CONFIG_SPIRAM=y` 已生效（启动日志无 PSRAM 错误）。
+6. **动图不播放 / 切换无反应**
+   确认 `GIF/` 下文件为合法 GIF89a 文件且未被改名；添加新动图后检查
+   `GIF_COUNT` 与 `gif_assets_init()` 是否同步更新。
+
+7. **板载按键无反应**
+   按键为 ADC 分压检测（VOLUP/VOLDOWN/MODE/SET），确认 `bsp_iot_button_create`
+   调用成功（启动日志输出 button count）；按键回调中 LVGL 加锁失败会被跳过，
+   连续快速按键时偶发属正常。
